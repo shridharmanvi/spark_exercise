@@ -120,3 +120,5 @@ if __name__ == '__main__':
     final = interim.alias('a').join(clicks_df.alias('b'), col('a.biz_id') == col('b.biz_id')).\
     select(col('a.biz_id'), col('a.create_time'), col('a.biz_name'), col('a.biz_name'), col('a.biz_desc'), col('b.title'), \
     col('b.url'), col('b.read_number'), col('like_number'))
+
+    final.write.csv('/Users/shridhar.manvi/Downloads/wechat_data_medium/final_output.csv')
