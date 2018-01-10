@@ -39,6 +39,53 @@ def clean_biz(biz):
     df = reduce(lambda biz, idx: biz.withColumnRenamed(old_columns[idx], new_columns[idx]), xrange(len(old_columns)), biz)
     return df
 
+# IMPROVEMENT: To fasten this process, I would split the html file into multiple smaller files and handle them parallely using thread pool
+# Extract html data from file
+def read_html_pages():
+
+    with open('path/to/input') as infile, open('/path/to/outfile') as outfile:
+        copy = False
+        data={}
+        for line in infile:
+            if line.strip() == "<BODY><!DOCTYPE html>":
+                copy = True
+            elif line.strip() == "</BODY>":
+                copy = False
+                try:
+                    outfile.write(data['biz_id'] + data['create_time'])
+                except Exception as e:
+                    pass
+                data = {'create_time':'', 'biz_id':''} # Reset
+            elif copy:
+                data = parse_line(line, data)
+
+def topic_of_interest(line):
+    line = line.strip()
+    ret_value = ''
+    if line.startsWith('var ct = '):
+        ret_value = line.split('"')[1]
+    elif line.startsWith('var appuin ='):
+        ret_value = line.split('"')[1]
+    return ret_value
+
+
+def parse_line(line, data):
+    interest = topic_of_interest(line)
+    if(interest != ''):
+        if(is_number(interest)):
+            data['create_time'] = interest
+        else:
+            data['biz_id'] = interest
+    return data
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        pass    
+
+
 if __name__ == '__main__':
     
     # Handle clicks data
@@ -50,4 +97,8 @@ if __name__ == '__main__':
     biz_file_path = 'file:///Users/shridhar.manvi/Downloads/wechat_data_medium/weixin_biz'
     biz = read_file_to_df(biz_file_path)
     biz_df = clean_biz(biz)
+    
+    path = '/Users/shridhar.manvi/Downloads/wechat_data_medium/weixin_page_test'
+    for line in open(path):
+        print line
     
