@@ -28,7 +28,7 @@ def clean_clicks(clicks):
     clicks = sq.alias('a').join(max_items.alias('b'), col('a.read_number') == col('b.read_number')).select([col('a.'+xy) for xy in sq.columns])
     # Define a UDF to extract biz_id from url
     url_parser=udf(extract_biz, StringType())
-    clicks_withbiz = clicks_df.withColumn("biz_id", url_parser("url"))
+    clicks_withbiz = clicks.withColumn("biz_id", url_parser("url"))
     return clicks_withbiz
 
 
@@ -41,9 +41,9 @@ def clean_biz(biz):
 
 # IMPROVEMENT: To fasten this process, I would split the html file into multiple smaller files and handle them parallely using thread pool
 # Extract html data from file
-def read_html_pages():
-
-    with open('path/to/input') as infile, open('/path/to/outfile') as outfile:
+# Since this method streams the file line by line, there is no risk of running into memory issues due to file size
+def read_html_pages(input_file_path, outfile_path):
+    with open(input_file_path) as infile, open(outfile_path, 'w') as outfile:
         copy = False
         data={}
         for line in infile:
@@ -52,19 +52,20 @@ def read_html_pages():
             elif line.strip() == "</BODY>":
                 copy = False
                 try:
-                    outfile.write(data['biz_id'] + data['create_time'])
+                    outfile.write(data['biz_id'] + '\t' + data['create_time'] + '\n')
                 except Exception as e:
                     pass
                 data = {'create_time':'', 'biz_id':''} # Reset
             elif copy:
                 data = parse_line(line, data)
 
+
 def topic_of_interest(line):
     line = line.strip()
     ret_value = ''
-    if line.startsWith('var ct = '):
+    if line.startswith('var ct = '):
         ret_value = line.split('"')[1]
-    elif line.startsWith('var appuin ='):
+    elif line.startswith('var appuin ='):
         ret_value = line.split('"')[1]
     return ret_value
 
@@ -83,7 +84,13 @@ def is_number(s):
         float(s)
         return True
     except ValueError:
-        pass    
+        pass
+
+def clean_html(html_data):
+    old_columns=['_c0', '_c1']
+    new_columns=['biz_id', 'create_time']
+    df = reduce(lambda html_data, idx: html_data.withColumnRenamed(old_columns[idx], new_columns[idx]), xrange(len(old_columns)), html_data)
+    return df
 
 
 if __name__ == '__main__':
@@ -98,7 +105,18 @@ if __name__ == '__main__':
     biz = read_file_to_df(biz_file_path)
     biz_df = clean_biz(biz)
     
-    path = '/Users/shridhar.manvi/Downloads/wechat_data_medium/weixin_page_test'
-    for line in open(path):
-        print line
+    # Handle html data
+    html_data_path = '/Users/shridhar.manvi/Downloads/wechat_data_medium/weixin_page_test'
+    html_outfile_path = '/Users/shridhar.manvi/Downloads/wechat_data_medium/outfile'
+    # This method streams the file and saves the required columns to a different file to be read as rdd in the next line
+    read_html_pages(html_data_path, html_outfile_path)
+    html_data = read_file_to_df(html_outfile_path)
     
+    # Interim join
+    interim = ht.alias('a').join(biz_df.alias('b'), col('a.biz_id') == col('b.biz_id')).\
+    select(col('a.biz_id'), col('a.create_time'), col('b.biz_name'), col('b.biz_name'), col('b.biz_desc'))
+
+    # Join with third dataframe
+    final = interim.alias('a').join(clicks_df.alias('b'), col('a.biz_id') == col('b.biz_id')).\
+    select(col('a.biz_id'), col('a.create_time'), col('a.biz_name'), col('a.biz_name'), col('a.biz_desc'), col('b.title'), \
+    col('b.url'), col('b.read_number'), col('like_number'))
